@@ -1,13 +1,8 @@
 # 🎸 🤘 rocBLAS Tune Everything Rapidly 🤷
 ## Build
-`python setup.py install`
-
-### Scratch Pad
-
-pip install pybind11[global]
-```
-mkdir -p build
-cd build
-CXX=/opt/rocm/bin/hipcc cmake ..
-make
-```
+`pip3 install -r requirements.txt`
+`pip3 install -v .`
+## Use
+`rocBlaster ${YOUR COMMAND HERE}`
+Example:
+`rocBlaster python3 micro_benchmarking_pytorch.py --network resnet50 --iterations 1`

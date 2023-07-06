@@ -1,1 +1,1 @@
-pip install pybind11[global]
+pybind11[global]

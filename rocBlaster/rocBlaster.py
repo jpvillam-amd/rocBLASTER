@@ -8,7 +8,7 @@ import os
 import re
 
 # TODO: Need to figure out this relative path
-from Tunner.rocBlasFinder import rocBlasFinder
+from rocBlaster.Tunner.rocBlasFinder import rocBlasFinder
 
 
 class ExecutableRunner:

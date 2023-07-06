@@ -14,7 +14,7 @@ from setuptools.command.build_ext import build_ext
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
         super().__init__(name, sources=[])
-        self.sourcedir = os.fspath(Path(sourcedir).resolve())+"/rocBlaster"
+        self.sourcedir = os.fspath(Path(sourcedir).resolve()) + "/rocBlaster"
 
 
 class CMakeBuild(build_ext):
@@ -32,12 +32,8 @@ class CMakeBuild(build_ext):
         env = os.environ.copy()
         env["CXX"] = "/opt/rocm/bin/hipcc"
 
-        subprocess.run(
-            ["cmake", ext.sourcedir], cwd=build_temp, check=True, env=env
-        )
-        subprocess.run(
-            ["make"], cwd=build_temp, check=True
-        )
+        subprocess.run(["cmake", ext.sourcedir], cwd=build_temp, check=True, env=env)
+        subprocess.run(["make"], cwd=build_temp, check=True)
 
 
 setup(
@@ -49,10 +45,12 @@ setup(
     long_description="",
     ext_modules=[CMakeExtension("Tunner")],
     cmdclass={"build_ext": CMakeBuild},
-    entry_points = {
-        'console_scripts': ['rocBlaster=rocBlaster.command_line:cli'],
+    entry_points={
+        "console_scripts": ["rocBlaster=rocBlaster.command_line:cli"],
     },
-    packages = find_packages(),
-    package_data = {"":["Tunner/rocBlasFinder.cpython-38-x86_64-linux-gnu.so"]},
+    include_package_data=True,
+    packages=find_packages(),
+    package_dir={"Tunner": "rocBlaster/Tunner"},
+    package_data={"Tunner": ["rocBlasFinder.cpython-38-x86_64-linux-gnu.so"]},
     zip_safe=False,
 )

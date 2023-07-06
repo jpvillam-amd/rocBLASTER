@@ -8,7 +8,7 @@ import os
 import re
 
 # TODO: Need to figure out this relative path
-from rocBlaster.Tunner.rocBlasFinder import rocBlasFinder
+from rocBlaster.rocBlasFinder import rocBlasFinder
 
 
 class ExecutableRunner:
@@ -34,8 +34,8 @@ class ExecutableRunner:
         process = subprocess.run(
             self.executable, capture_output=True, text=True, env=env
         )
-        self.process_output = process.stdout
-        # print(f"Output from subprocess.run: {self.process_output}")
+        self.process_output = process.stderr
+        print(f"Output from subprocess.run: {self.process_output}")
 
     def get_unique_gemms(self):
         """

@@ -1,3 +1,9 @@
+# 🎸 🤘 rocBLAS Tune Everything Rapidly 🤷
+## Build
+`python setup.py install`
+
+### Scratch Pad
+
 pip install pybind11[global]
 ```
 mkdir -p build

@@ -49,7 +49,7 @@ setup(
         "console_scripts": ["rocBlaster=rocBlaster.command_line:cli"],
     },
     include_package_data=True,
-    packages=find_packages(),
+    packages=['rocBlaster', 'Tunner'],#find_packages(),
     package_dir={"Tunner": "rocBlaster/Tunner"},
     package_data={"Tunner": ["rocBlasFinder.cpython-38-x86_64-linux-gnu.so"]},
     zip_safe=False,

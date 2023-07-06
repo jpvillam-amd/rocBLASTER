@@ -7,7 +7,7 @@
 Example:
 `rocBlaster python3 micro_benchmarking_pytorch.py --network resnet50 --iterations 1`
 ## TODO:
-Support Batched and Stridded
-Support different sizes (fp32...)
-Support Multi-GPU parallelism
+- Support Batched and Stridded
+- Support different sizes (fp32...)
+- Support Multi-GPU parallelism
 ...

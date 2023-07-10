@@ -225,7 +225,6 @@ class rocBlasFinder {
 	  ave_time = bestTime / hot_calls;
 	  std::cout << "Winner: " << ave_time << " us "
 		<< "(sol " << bestSol << ")" << std::endl;
-	  std::cout << std::endl;
 	  return "Default: " + std::to_string(ave_time_default) + " Winner: " + std::to_string(ave_time) + " Solution: " + std::to_string(bestSol);
 	}
 };

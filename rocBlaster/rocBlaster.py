@@ -27,15 +27,16 @@ class ExecutableRunner:
     def __init__(self, executable):
         self.executable = executable
 
-    def run_and_collect(self):
+    def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
         # TODO: Needs a "try catch"
         process = subprocess.run(
-            self.executable, capture_output=True, text=True, env=env
+            self.executable, stderr=subprocess.PIPE, text=True, env=env
         )
         self.process_output = process.stderr
-        print(f"Output from subprocess.run: {self.process_output}")
+        if show_output:
+            print(f"Output from subprocess.run: {self.process_output}")
 
     def get_unique_gemms(self):
         """
@@ -62,19 +63,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
-        help="Output file with the results.",
+        help="Output file with the results. NOT IMPLEMENTED YET",
         action="store",
         dest="output",
         default="BlaterOutput.txt",
     )
+    parser.add_argument("--show_gemms", action="store_true")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
     # Run and collect
     executable = ExecutableRunner(args.executable)
     executable.run_and_collect()
+    print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
     gemms = executable.get_unique_gemms()
-    print(f"Got unique gemms {gemms}")
+    if args.show_gemms:
+        print(f"Got unique gemms {gemms}")
 
     tunner = rocBlasFinder()
     total_old = 0
@@ -89,12 +93,15 @@ def main():
         default_time = float(match.group(1))
         winning_time = float(match.group(2))
         solution_nu = int(match.group(3))
-        print(f"Improved by: {(default_time-winning_time)/default_time}")
+        print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
         total_old += int(gemm[0]) * default_time
         total_new += int(gemm[0]) * winning_time
         # TODO Write solutions out file
     print(
-        f"Old time: {total_old}\nNew time: {total_new}\nTotal improvement: {(total_old-total_new)/total_old:0.2f}"
+        f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
+        f"Old time: {total_old}{os.linesep}"
+        f"New time: {total_new}{os.linesep}"
+        f"Total improvement: {(total_old-total_new)/total_old:0.2f}"
     )
 
 

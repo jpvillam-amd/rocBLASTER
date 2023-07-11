@@ -6,23 +6,91 @@ import argparse
 import subprocess
 import os
 import re
+import csv
 
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
+
+
+class GEMM:
+    """
+    Class to contain a gemm and its occurances.
+    """
+
+    GENERIC_ROCBLAS_BENCH_RE = (
+        r"./rocblas-bench -f gemm_ex"
+        r" --transposeA (?P<TRANSPOSE_A>\w)"
+        r" --transposeB (?P<TRANSPOSE_B>\w)"
+        r" -m (?P<M>\d+)"
+        r" -n (?P<N>\d+)"
+        r" -k (?P<K>\d+)"
+        r" --alpha (?P<ALPHA>\d+)"
+        r" --a_type (?P<A_TYPE>\w+)"
+        r" --lda (?P<LDA>\d+)"
+        r" --b_type (?P<B_TYPE>\w+)"
+        r" --ldb (?P<LDB>\d+)"
+        r" --beta (?P<BETA>\d+)"
+        r" --c_type (?P<C_TYPE>\w+)"
+        r" --ldc (?P<LDC>\d+)"
+        r" --d_type (?P<D_TYPE>\w+)"
+        r" --ldd (?P<LDD>\d+)"
+        r" --compute_type (?P<COMPUTE_TYPE>\w+)"
+        r" --algo (?P<ALGO>\d+)"
+        r" --solution_index (?P<SOLUTION_INDEX>\d+)"
+        r" --flags (?P<FLAGS>\w+)"
+    )
+
+    def __init__(self, rocblas_bench_string):
+        self.match = re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string)
+        if self.match:
+            self.count = 1
+            self.tA = self.match.group("TRANSPOSE_A")
+            self.tB = self.match.group("TRANSPOSE_B")
+            self.m = int(self.match.group("M"))
+            self.n = int(self.match.group("N"))
+            self.k = int(self.match.group("K"))
+            self.alpha = int(self.match.group("ALPHA"))
+            self.lda = int(self.match.group("LDA"))
+            self.ldb = int(self.match.group("LDB"))
+            self.beta = int(self.match.group("BETA"))
+            self.ldc = int(self.match.group("LDC"))
+            self.compute_type = self.match.group("COMPUTE_TYPE")
+            self.a_type = self.match.group("A_TYPE")
+            self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+
+    def __bool__(self):
+        return True if self.match else False
+
+    def inc_count(self, number=1):
+        self.count += number
+
+    def __repr__(self):
+        return f"Instances: {self.count} M: {self.m} n: {self.n} k: {self.k}"
+
+    def csv_list(self):
+        return [
+            self.tA,
+            self.tB,
+            self.m,
+            self.n,
+            1,
+            self.k,
+            self.alpha,
+            self.beta,
+            self.lda,
+            self.ldb,
+            self.ldc,
+            self.a_type,
+            self.a_type,
+            self.compute_type,
+            self.solution_index,
+        ]
 
 
 class ExecutableRunner:
     """
     Class for running any executable, with the correct env variable, and collect logs
     """
-
-    # Constants
-    GENERIC_ROCBLAS_BENCH_RE = r"./rocblas-bench -f gemm -r (\w+) --transposeA (\w) --transposeB (\w) -m (\w+) -n (\w+) -k (\w+) --alpha (\w+) --lda (\w+) --ldb (\w+) --beta (\w+) --ldc (\w+)"
-    TRANSPOSE_A = 2
-    TRANSPOSE_B = 3
-    M = 4
-    N = 5
-    K = 6
 
     def __init__(self, executable):
         self.executable = executable
@@ -45,17 +113,12 @@ class ExecutableRunner:
         out_dict = {}
         lines = self.process_output.splitlines()
         for line in lines:
-            if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, line):
-                tA = match.group(self.TRANSPOSE_A)
-                tB = match.group(self.TRANSPOSE_B)
-                m = match.group(self.M)
-                n = match.group(self.N)
-                k = match.group(self.K)
-                key = f"ta:{tA},tb:{tB},m:{m},n{n},k{k}"
-                # TODO Seems like there should be a better way, maybe a custom class?
-                if entry := out_dict.get(key, [0, tA, tB, m, n, k]):
-                    entry[0] += 1
-                    out_dict[key] = entry
+            if gemm := GEMM(line):
+                # TODO Seems like there should be a better way?
+                if gemm.key in out_dict:
+                    out_dict[gemm.key].inc_count
+                else:
+                    out_dict[gemm.key] = gemm
         return list(out_dict.values())
 
 
@@ -66,7 +129,7 @@ def main():
         help="Output file with the results. NOT IMPLEMENTED YET",
         action="store",
         dest="output",
-        default="BlaterOutput.txt",
+        default="BlasterOutput.csv",
     )
     parser.add_argument("--show_gemms", action="store_true")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
@@ -84,8 +147,8 @@ def main():
     total_old = 0
     total_new = 0
     for gemm in gemms:
-        # TODO: Best to pass a list - first element?
-        results = tunner.run(gemm[1], gemm[2], int(gemm[3]), int(gemm[4]), int(gemm[5]))
+        # TODO: Best to pass a list?
+        results = tunner.run(gemm.tA, gemm.tB, gemm.m, gemm.n, gemm.k)
         # TODO: Check if bad?
         match = re.match(
             r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
@@ -94,15 +157,39 @@ def main():
         winning_time = float(match.group(2))
         solution_nu = int(match.group(3))
         print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
-        total_old += int(gemm[0]) * default_time
-        total_new += int(gemm[0]) * winning_time
-        # TODO Write solutions out file
+        total_old += int(gemm.count) * default_time
+        total_new += int(gemm.count) * winning_time
+        # Write new solution to gemm
+        gemm.solution_index = solution_nu
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
         f"Old time: {total_old}{os.linesep}"
         f"New time: {total_new}{os.linesep}"
         f"Total improvement: {(total_old-total_new)/total_old:0.2f}"
     )
+
+    with open(args.output, "w", newline="") as f:
+        writer = csv.writer(f)
+        headers = [
+            "transA",
+            "transB",
+            "M",
+            "N",
+            "batch_count",
+            "K",
+            "alpha",
+            "beta",
+            "lda",
+            "ldb",
+            "ldc",
+            "input_type",
+            "output_type",
+            "compute_type",
+            "solution_index",
+        ]
+        writer.writerow(headers)
+        for gemm in gemms:
+            writer.writerow(gemm.csv_list())
 
 
 if __name__ == "__main__":

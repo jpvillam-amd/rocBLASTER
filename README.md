@@ -5,7 +5,7 @@
 ## Use
 `rocBlaster ${YOUR COMMAND HERE}`
 Example:
-`rocBlaster python3 micro_benchmarking_pytorch.py --network resnet50 --iterations 1`
+`rocBlaster python3 micro_benchmarking_pytorch.py --network alexnet --iterations 1 --fp16 1`
 ## TODO:
 - Support Batched and Stridded
 - Support different sizes (fp32...)

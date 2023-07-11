@@ -67,7 +67,7 @@ class InstallCMakeLibsData(install_data):
         # track the libraries through package data more than anything...
         # help would be appriciated
 
-        #TODO: This seems to be coping to a top level, needs fixing.
+        # TODO: This seems to be coping to a top level, needs fixing.
 
         self.outfiles = self.distribution.data_files
 

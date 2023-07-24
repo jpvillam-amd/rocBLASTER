@@ -91,6 +91,13 @@ class rocBlasFinder {
 	  if (GEMM_size.tb == "T") {
 		trans_b = rocblas_operation_transpose;
 	  }
+	  if (GEMM_size.ta == "N") {
+		trans_a = rocblas_operation_none;
+	  }
+
+	  if (GEMM_size.tb == "N") {
+		trans_b = rocblas_operation_none;
+	  }
 
 	  if (trans_a == rocblas_operation_none) {
 		lda = GEMM_size.m;

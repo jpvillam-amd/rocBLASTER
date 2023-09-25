@@ -11,7 +11,6 @@ import csv
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
 
-
 class GEMM:
     """
     Class to contain a gemm and its occurances.
@@ -100,7 +99,7 @@ class ExecutableRunner:
 
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
-        env["ROCBLAS_LAYER"] = "4"
+        env["ROCBLAS_LAYER"] = "2"
         # TODO: Needs a "try catch"
         process = subprocess.run(
             self.executable, stderr=subprocess.PIPE, text=True, env=env

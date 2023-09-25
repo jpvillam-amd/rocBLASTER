@@ -124,17 +124,19 @@ class rocBlasFinder {
 	  // initial data on host
 	  srand(1);
 	  for (int i = 0; i < size_a; ++i) {
-		ha[i] = static_cast<_Float16>(rand() % 17);
+		ha[i] = static_cast<a_t>(rand() % 17);
 	  }
 	  for (int i = 0; i < size_b; ++i) {
-		hb[i] = static_cast<_Float16>(rand() % 17);
+		hb[i] = static_cast<b_t>(rand() % 17);
 	  }
 	  for (int i = 0; i < size_c; ++i) {
-		hc[i] = static_cast<_Float16>(rand() % 17);
+		hc[i] = static_cast<c_t>(rand() % 17);
 	  }
 
 	  // allocate memory on device
-	  float *da, *db, *dc;
+	  a_t *da;
+	  b_t *db;
+	  c_t *dc;
 	  CHECK_HIP_ERROR(hipMalloc(&da, size_a * sizeof(a_t)));
 	  CHECK_HIP_ERROR(hipMalloc(&db, size_b * sizeof(b_t)));
 	  CHECK_HIP_ERROR(hipMalloc(&dc, size_c * sizeof(c_t)));

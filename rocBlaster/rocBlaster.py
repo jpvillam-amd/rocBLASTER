@@ -42,6 +42,7 @@ class GEMM:
 
     def __init__(self, rocblas_bench_string):
         self.match = re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string)
+        self.rocblas_bench_string = rocblas_bench_string
         if self.match:
             self.count = 1
             self.tA = self.match.group("TRANSPOSE_A")
@@ -55,8 +56,10 @@ class GEMM:
             self.beta = int(self.match.group("BETA"))
             self.ldc = int(self.match.group("LDC"))
             self.compute_type = self.match.group("COMPUTE_TYPE")
-            self.a_type = self.match.group("A_TYPE")
+            self.input_type = self.match.group("A_TYPE")
+            self.output_type = self.match.group("C_TYPE")
             self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+            self.solution_index = int(self.match.group("SOLUTION_INDEX"))
 
     def __bool__(self):
         return True if self.match else False
@@ -65,7 +68,7 @@ class GEMM:
         self.count += number
 
     def __repr__(self):
-        return f"Instances: {self.count} M: {self.m} n: {self.n} k: {self.k}"
+        return f"Instances: {self.count} M: {self.m} N: {self.n} K: {self.k} solution_index: {self.solution_index}\n"
 
     def csv_list(self):
         return [
@@ -80,8 +83,8 @@ class GEMM:
             self.lda,
             self.ldb,
             self.ldc,
-            self.a_type,
-            self.a_type,
+            self.input_type,
+            self.output_type,
             self.compute_type,
             self.solution_index,
         ]
@@ -97,7 +100,7 @@ class ExecutableRunner:
 
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
-        env["ROCBLAS_LAYER"] = "2"
+        env["ROCBLAS_LAYER"] = "4"
         # TODO: Needs a "try catch"
         process = subprocess.run(
             self.executable, stderr=subprocess.PIPE, text=True, env=env
@@ -116,7 +119,7 @@ class ExecutableRunner:
             if gemm := GEMM(line):
                 # TODO Seems like there should be a better way?
                 if gemm.key in out_dict:
-                    out_dict[gemm.key].inc_count
+                    out_dict[gemm.key].inc_count()
                 else:
                     out_dict[gemm.key] = gemm
         return list(out_dict.values())

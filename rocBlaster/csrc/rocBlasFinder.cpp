@@ -417,14 +417,14 @@ PYBIND11_MODULE(rocBlasFinder, m) {
     // bindings to rocBlasFinder class
     py::class_<rocBlasFinder>(m, "rocBlasFinder")
         .def(py::init())
-        .def("run", py
-             : overload_cast<std::string, std::string, int, int, int, float,
-                             float>(&rocBlasFinder::run),
-               "Generic GEMM")
-        .def("run", py
-             : overload_cast<std::string, std::string, int, int, int, float,
-                             float, int, int, int, int>(&rocBlasFinder::run),
-               "Strided batched GEMM");
+        .def("run",
+             py::overload_cast<std::string, std::string, int, int, int, float,
+                               float>(&rocBlasFinder::run),
+             "Generic GEMM")
+        .def("run",
+             py::overload_cast<std::string, std::string, int, int, int, float,
+                               float, int, int, int, int>(&rocBlasFinder::run),
+             "Strided batched GEMM");
 }
 /*
    int main(){

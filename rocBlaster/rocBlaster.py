@@ -17,6 +17,34 @@ class GEMM:
     Class to contain a gemm and its occurances.
     """
 
+    STRIDED_BATCHED_ROCBLAS_BENCH_RE = (
+        r"./rocblas-bench -f gemm_strided_batched_ex"
+        r" --transposeA (?P<TRANSPOSE_A>\w)"
+        r" --transposeB (?P<TRANSPOSE_B>\w)"
+        r" -m (?P<M>\d+)"
+        r" -n (?P<N>\d+)"
+        r" -k (?P<K>\d+)"
+        r" --alpha (?P<ALPHA>\d+)"
+        r" --a_type (?P<A_TYPE>\w+)"
+        r" --lda (?P<LDA>\d+)"
+        r" --stride_a (?P<STRIDE_A>\d+)"
+        r" --b_type (?P<B_TYPE>\w+)"
+        r" --ldb (?P<LDB>\d+)"
+        r" --stride_b (?P<STRIDE_B>\d+)"
+        r" --beta (?P<BETA>\d+)"
+        r" --c_type (?P<C_TYPE>\w+)"
+        r" --ldc (?P<LDC>\d+)"
+        r" --stride_c (?P<STRIDE_C>\d+)"
+        r" --d_type (?P<D_TYPE>\w+)"
+        r" --ldd (?P<LDD>\d+)"
+        r" --stride_d (?P<STRIDE_D>\d+)"
+        r" --batch_count (?P<BATCH_COUNT>\d+)"
+        r" --compute_type (?P<COMPUTE_TYPE>\w+)"
+        r" --algo (?P<ALGO>\d+)"
+        r" --solution_index (?P<SOLUTION_INDEX>\d+)"
+        r" --flags (?P<FLAGS>\w+)"
+    )
+
     GENERIC_ROCBLAS_BENCH_RE = (
         r"./rocblas-bench -f gemm_ex"
         r" --transposeA (?P<TRANSPOSE_A>\w)"
@@ -41,7 +69,19 @@ class GEMM:
     )
 
     def __init__(self, rocblas_bench_string):
-        self.match = re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string)
+        # First match the gemm
+        if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
+            self.match = match
+            self.gemm_type = "Generic"
+        elif match := re.match(
+            self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string
+        ):
+            self.match = match
+            self.gemm_type = "Strided batched"
+        else:
+            self.match = False
+
+        # Collect data in new if so we can share code
         if self.match:
             self.count = 1
             self.tA = self.match.group("TRANSPOSE_A")
@@ -49,14 +89,22 @@ class GEMM:
             self.m = int(self.match.group("M"))
             self.n = int(self.match.group("N"))
             self.k = int(self.match.group("K"))
-            self.alpha = int(self.match.group("ALPHA"))
+            self.alpha = float(self.match.group("ALPHA"))
             self.lda = int(self.match.group("LDA"))
             self.ldb = int(self.match.group("LDB"))
-            self.beta = int(self.match.group("BETA"))
+            self.beta = float(self.match.group("BETA"))
             self.ldc = int(self.match.group("LDC"))
             self.compute_type = self.match.group("COMPUTE_TYPE")
             self.a_type = self.match.group("A_TYPE")
-            self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+            if self.gemm_type == "Generic":
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+            elif self.gemm_type == "Strided batched":
+                self.stride_a = int(self.match.group("STRIDE_A"))
+                self.stride_b = int(self.match.group("STRIDE_B"))
+                self.stride_c = int(self.match.group("STRIDE_C"))
+                self.stride_d = int(self.match.group("STRIDE_D"))
+                self.batch_count = int(self.match.group("BATCH_COUNT"))
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
 
     def __bool__(self):
         return True if self.match else False
@@ -67,24 +115,65 @@ class GEMM:
     def __repr__(self):
         return f"Instances: {self.count} M: {self.m} n: {self.n} k: {self.k}"
 
+    def run_args(self):
+        if self.gemm_type == "Generic":
+            return self.tA, self.tB, self.m, self.n, self.k, self.alpha, self.beta
+        elif self.gemm_type == "Strided batched":
+            return (
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.stride_a,
+                self.stride_b,
+                self.stride_c,
+                self.batch_count,
+            )
+
     def csv_list(self):
-        return [
-            self.tA,
-            self.tB,
-            self.m,
-            self.n,
-            1,
-            self.k,
-            self.alpha,
-            self.beta,
-            self.lda,
-            self.ldb,
-            self.ldc,
-            self.a_type,
-            self.a_type,
-            self.compute_type,
-            self.solution_index,
-        ]
+        # Only two possible formats? from snooping: UserDrivenTuningParser.cpp in tensile
+        if self.gemm_type == "Generic":
+            return [
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                1,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.lda,
+                self.ldb,
+                self.ldc,
+                self.a_type,
+                self.a_type,
+                self.compute_type,
+                self.solution_index,
+            ]
+        else:
+            return [
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                self.batch_count,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.lda,
+                self.ldb,
+                self.ldc,
+                self.stride_a,
+                self.stride_b,
+                self.stride_c,
+                self.a_type,
+                self.a_type,
+                self.compute_type,
+                self.solution_index,
+            ]
 
 
 class ExecutableRunner:
@@ -98,11 +187,15 @@ class ExecutableRunner:
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
-        # TODO: Needs a "try catch"
+        # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
-            self.executable, stderr=subprocess.PIPE, text=True, env=env
+            self.executable,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
         )
-        self.process_output = process.stderr
+        self.process_output = process.stdout
         if show_output:
             print(f"Output from subprocess.run: {self.process_output}")
 
@@ -148,7 +241,7 @@ def main():
     total_new = 0
     for gemm in gemms:
         # TODO: Best to pass a list?
-        results = tunner.run(gemm.tA, gemm.tB, gemm.m, gemm.n, gemm.k)
+        results = tunner.run(*gemm.run_args())
         # TODO: Check if bad?
         match = re.match(
             r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results

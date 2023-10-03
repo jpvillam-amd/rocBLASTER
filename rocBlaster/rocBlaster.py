@@ -69,8 +69,8 @@ class GEMM:
     )
 
     def __init__(self, rocblas_bench_string):
-        if re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
-            self.match = True
+        if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
+            self.match = match
             self.gemm_type = "Generic"
             self.count = 1
             self.tA = self.match.group("TRANSPOSE_A")
@@ -86,8 +86,10 @@ class GEMM:
             self.compute_type = self.match.group("COMPUTE_TYPE")
             self.a_type = self.match.group("A_TYPE")
             self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
-        elif re.match(self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string):
-            self.match = True
+        elif match := re.match(
+            self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string
+        ):
+            self.match = match
             self.gemm_type = "Strided batched"
             self.count = 1
             self.tA = self.match.group("TRANSPOSE_A")
@@ -139,7 +141,7 @@ class GEMM:
             )
 
     def csv_list(self):
-        # Only two possible formats from snooping: UserDrivenTuningParser.cpp in tensile
+        # Only two possible formats? from snooping: UserDrivenTuningParser.cpp in tensile
         if self.gemm_type == "Generic":
             return [
                 self.tA,

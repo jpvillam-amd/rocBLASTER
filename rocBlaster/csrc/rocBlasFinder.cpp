@@ -51,7 +51,7 @@ struct MNKB {
 class rocBlasFinder {
   private:
     /* Constants */
-    const int deviceId = 4;
+    const int deviceId = 0;
     const rocblas_int cold_calls = 5;
     const rocblas_int hot_calls = 20;
 
@@ -320,34 +320,35 @@ class rocBlasFinder {
         CHECK_HIP_ERROR(hipMemcpy(dc, hc.data(), sizeof(c_t) * size_c,
                                   hipMemcpyHostToDevice));
 
-#define GEMM_EX_ARGS                                                           \
+#define GEMM_ST_BATCH_EX_ARGS                                                  \
     handle, trans_a, trans_b, GEMM_size.m, GEMM_size.n, GEMM_size.k, &alpha,   \
         da, input_datatype, lda, static_cast<rocblas_int>(stride_a), db,       \
         input_datatype, ldb, static_cast<rocblas_int>(stride_b), &beta, dc,    \
         output_datatype, ldc, static_cast<rocblas_int>(stride_c), dc,          \
         output_datatype, ldc, static_cast<rocblas_int>(stride_c),              \
         GEMM_size.batches, compute_datatype
-#define rocblas_gemm_exM(...) rocblas_gemm_strided_batched_ex(__VA_ARGS__)
+#define rocblas_st_batch_gemm_exM(...)                                         \
+    rocblas_gemm_strided_batched_ex(__VA_ARGS__)
 
         // Get number of solutions
         rocblas_int size;
         CHECK_ROCBLAS_ERROR(rocblas_gemm_strided_batched_ex_get_solutions(
-            GEMM_EX_ARGS, rocblas_gemm_algo_solution_index,
+            GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_solution_index,
             rocblas_gemm_flags_none, NULL, &size));
         std::cout << size << " solution(s) found" << std::endl;
 
         // Fill array with list of solutions
         std::vector<rocblas_int> ary(size);
         CHECK_ROCBLAS_ERROR(rocblas_gemm_strided_batched_ex_get_solutions(
-            GEMM_EX_ARGS, rocblas_gemm_algo_solution_index,
+            GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_solution_index,
             rocblas_gemm_flags_none, ary.data(), &size));
 
         // Get default timing
         // warmup
         for (rocblas_int cc = 0; cc < cold_calls; ++cc) {
-            CHECK_ROCBLAS_ERROR(rocblas_gemm_exM(GEMM_EX_ARGS,
-                                                 rocblas_gemm_algo_standard, 0,
-                                                 rocblas_gemm_flags_none));
+            CHECK_ROCBLAS_ERROR(rocblas_st_batch_gemm_exM(
+                GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_standard, 0,
+                rocblas_gemm_flags_none));
         }
 
         double time = 0;
@@ -357,9 +358,9 @@ class rocBlasFinder {
         // timing loop
         time = get_time_us_sync(stream); // in microseconds
         for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
-            CHECK_ROCBLAS_ERROR(rocblas_gemm_exM(GEMM_EX_ARGS,
-                                                 rocblas_gemm_algo_standard, 0,
-                                                 rocblas_gemm_flags_none));
+            CHECK_ROCBLAS_ERROR(rocblas_st_batch_gemm_exM(
+                GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_standard, 0,
+                rocblas_gemm_flags_none));
         }
         time = get_time_us_sync(stream) - time;
 
@@ -375,9 +376,9 @@ class rocBlasFinder {
             // warmup
             try {
                 for (rocblas_int cc = 0; cc < cold_calls; ++cc) {
-                    auto ret = rocblas_gemm_exM(
-                        GEMM_EX_ARGS, rocblas_gemm_algo_solution_index, sol,
-                        rocblas_gemm_flags_none);
+                    auto ret = rocblas_st_batch_gemm_exM(
+                        GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_solution_index,
+                        sol, rocblas_gemm_flags_none);
                     if (ret != rocblas_status::rocblas_status_success) {
                         throw(sol);
                     }
@@ -386,9 +387,9 @@ class rocBlasFinder {
                 // timing loop
                 time = get_time_us_sync(stream); // in microseconds
                 for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
-                    auto ret = rocblas_gemm_exM(
-                        GEMM_EX_ARGS, rocblas_gemm_algo_solution_index, sol,
-                        rocblas_gemm_flags_none);
+                    auto ret = rocblas_st_batch_gemm_exM(
+                        GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_solution_index,
+                        sol, rocblas_gemm_flags_none);
                     if (ret != rocblas_status::rocblas_status_success) {
                         throw(sol);
                     }

@@ -287,7 +287,7 @@ class rocBlasFinder {
             size_b = GEMM_size.k * ldb * GEMM_size.batches;
         }
         ldc = GEMM_size.m;
-        size_c = GEMM_size.n * ldc;
+        size_c = GEMM_size.n * ldc * GEMM_size.batches;
 
         // Naming: da is in GPU (device) memory. ha is in CPU (host) memory
         std::vector<a_t> ha(size_a);

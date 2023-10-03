@@ -69,28 +69,21 @@ class GEMM:
     )
 
     def __init__(self, rocblas_bench_string):
+
+        # First match the gemm
         if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
             self.match = match
             self.gemm_type = "Generic"
-            self.count = 1
-            self.tA = self.match.group("TRANSPOSE_A")
-            self.tB = self.match.group("TRANSPOSE_B")
-            self.m = int(self.match.group("M"))
-            self.n = int(self.match.group("N"))
-            self.k = int(self.match.group("K"))
-            self.alpha = float(self.match.group("ALPHA"))
-            self.lda = int(self.match.group("LDA"))
-            self.ldb = int(self.match.group("LDB"))
-            self.beta = float(self.match.group("BETA"))
-            self.ldc = int(self.match.group("LDC"))
-            self.compute_type = self.match.group("COMPUTE_TYPE")
-            self.a_type = self.match.group("A_TYPE")
-            self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
         elif match := re.match(
             self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string
         ):
             self.match = match
             self.gemm_type = "Strided batched"
+        else:
+            self.match = False
+
+        # Collect data in new if so we can share code
+        if self.match:
             self.count = 1
             self.tA = self.match.group("TRANSPOSE_A")
             self.tB = self.match.group("TRANSPOSE_B")
@@ -104,14 +97,15 @@ class GEMM:
             self.ldc = int(self.match.group("LDC"))
             self.compute_type = self.match.group("COMPUTE_TYPE")
             self.a_type = self.match.group("A_TYPE")
-            self.stride_a = int(self.match.group("STRIDE_A"))
-            self.stride_b = int(self.match.group("STRIDE_B"))
-            self.stride_c = int(self.match.group("STRIDE_C"))
-            self.stride_d = int(self.match.group("STRIDE_D"))
-            self.batch_count = int(self.match.group("BATCH_COUNT"))
-            self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
-        else:
-            self.match = False
+            if self.gemm_type == "Generic":
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+            elif self.gemm_type == "Strided batched":
+                self.stride_a = int(self.match.group("STRIDE_A"))
+                self.stride_b = int(self.match.group("STRIDE_B"))
+                self.stride_c = int(self.match.group("STRIDE_C"))
+                self.stride_d = int(self.match.group("STRIDE_D"))
+                self.batch_count = int(self.match.group("BATCH_COUNT"))
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
 
     def __bool__(self):
         return True if self.match else False
@@ -194,11 +188,11 @@ class ExecutableRunner:
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
-        # TODO: Needs a "try catch"
+        # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
-            self.executable, stderr=subprocess.PIPE, text=True, env=env
+            self.executable, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env
         )
-        self.process_output = process.stderr
+        self.process_output = process.stdout
         if show_output:
             print(f"Output from subprocess.run: {self.process_output}")
 

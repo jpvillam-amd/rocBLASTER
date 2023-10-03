@@ -51,7 +51,7 @@ struct MNKB {
 class rocBlasFinder {
   private:
     /* Constants */
-    const int deviceId = 0;
+    const int deviceId = 4;
     const rocblas_int cold_calls = 5;
     const rocblas_int hot_calls = 20;
 

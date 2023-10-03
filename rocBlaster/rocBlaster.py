@@ -78,10 +78,10 @@ class GEMM:
             self.m = int(self.match.group("M"))
             self.n = int(self.match.group("N"))
             self.k = int(self.match.group("K"))
-            self.alpha = int(self.match.group("ALPHA"))
+            self.alpha = float(self.match.group("ALPHA"))
             self.lda = int(self.match.group("LDA"))
             self.ldb = int(self.match.group("LDB"))
-            self.beta = int(self.match.group("BETA"))
+            self.beta = float(self.match.group("BETA"))
             self.ldc = int(self.match.group("LDC"))
             self.compute_type = self.match.group("COMPUTE_TYPE")
             self.a_type = self.match.group("A_TYPE")
@@ -97,18 +97,18 @@ class GEMM:
             self.m = int(self.match.group("M"))
             self.n = int(self.match.group("N"))
             self.k = int(self.match.group("K"))
-            self.alpha = int(self.match.group("ALPHA"))
+            self.alpha = float(self.match.group("ALPHA"))
             self.lda = int(self.match.group("LDA"))
             self.ldb = int(self.match.group("LDB"))
-            self.beta = int(self.match.group("BETA"))
+            self.beta = float(self.match.group("BETA"))
             self.ldc = int(self.match.group("LDC"))
             self.compute_type = self.match.group("COMPUTE_TYPE")
             self.a_type = self.match.group("A_TYPE")
-            self.stride_a = self.match.group("STRIDE_A")
-            self.stride_b = self.match.group("STRIDE_B")
-            self.stride_c = self.match.group("STRIDE_C")
-            self.stride_d = self.match.group("STRIDE_D")
-            self.batch_count = self.match.group("BATCH_COUNT")
+            self.stride_a = int(self.match.group("STRIDE_A"))
+            self.stride_b = int(self.match.group("STRIDE_B"))
+            self.stride_c = int(self.match.group("STRIDE_C"))
+            self.stride_d = int(self.match.group("STRIDE_D"))
+            self.batch_count = int(self.match.group("BATCH_COUNT"))
             self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
         else:
             self.match = False
@@ -244,7 +244,7 @@ def main():
     total_new = 0
     for gemm in gemms:
         # TODO: Best to pass a list?
-        results = tunner.run(gemm.run_args())
+        results = tunner.run(*gemm.run_args())
         # TODO: Check if bad?
         match = re.match(
             r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results

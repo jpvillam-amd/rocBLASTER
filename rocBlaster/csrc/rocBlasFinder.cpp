@@ -326,7 +326,7 @@ class rocBlasFinder {
         input_datatype, ldb, static_cast<rocblas_int>(stride_b), &beta, dc,    \
         output_datatype, ldc, static_cast<rocblas_int>(stride_c), dc,          \
         output_datatype, ldc, static_cast<rocblas_int>(stride_c),              \
-        GEMM_size.batch, compute_datatype
+        GEMM_size.batches, compute_datatype
 #define rocblas_gemm_exM(...) rocblas_gemm_strided_batched_ex(__VA_ARGS__)
 
         // Get number of solutions

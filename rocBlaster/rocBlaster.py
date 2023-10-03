@@ -190,7 +190,11 @@ class ExecutableRunner:
         env["ROCBLAS_LAYER"] = "2"
         # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
-            self.executable, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env
+            self.executable,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
         )
         self.process_output = process.stdout
         if show_output:

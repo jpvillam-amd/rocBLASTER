@@ -114,7 +114,7 @@ class GEMM:
             self.match = False
 
     def __bool__(self):
-        return self.match
+        return True if self.match else False
 
     def inc_count(self, number=1):
         self.count += number

@@ -69,7 +69,6 @@ class GEMM:
     )
 
     def __init__(self, rocblas_bench_string):
-
         # First match the gemm
         if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
             self.match = match

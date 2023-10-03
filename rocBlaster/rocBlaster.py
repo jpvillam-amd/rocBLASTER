@@ -16,6 +16,33 @@ class GEMM:
     """
     Class to contain a gemm and its occurances.
     """
+   STRIDED_BARCHED_ROCBLAS_BENCH_RE = (
+        r"./rocblas-bench -f gemm_strided_batched_ex"
+        r" --transposeA (?P<TRANSPOSE_A>\w)"
+        r" --transposeB (?P<TRANSPOSE_B>\w)"
+        r" -m (?P<M>\d+)"
+        r" -n (?P<N>\d+)"
+        r" -k (?P<K>\d+)"
+        r" --alpha (?P<ALPHA>\d+)"
+        r" --a_type (?P<A_TYPE>\w+)"
+        r" --lda (?P<LDA>\d+)"
+        r" --stride_a (?P<STRIDE_A>\d+)"
+        r" --b_type (?P<B_TYPE>\w+)"
+        r" --ldb (?P<LDB>\d+)"
+        r" --stride_b (?P<STRIDE_B>\d+)"
+        r" --beta (?P<BETA>\d+)"
+        r" --c_type (?P<C_TYPE>\w+)"
+        r" --ldc (?P<LDC>\d+)"
+        r" --stride_c (?P<STRIDE_C>\d+)"
+        r" --d_type (?P<D_TYPE>\w+)"
+        r" --ldd (?P<LDD>\d+)"
+        r" --stride_d (?P<STRIDE_D>\d+)"
+        r" --batch_count (?P<BATCH_COUNT>\d+)"
+        r" --compute_type (?P<COMPUTE_TYPE>\w+)"
+        r" --algo (?P<ALGO>\d+)"
+        r" --solution_index (?P<SOLUTION_INDEX>\d+)"
+        r" --flags (?P<FLAGS>\w+)"
+    )
 
     GENERIC_ROCBLAS_BENCH_RE = (
         r"./rocblas-bench -f gemm_ex"
@@ -148,7 +175,7 @@ def main():
     total_new = 0
     for gemm in gemms:
         # TODO: Best to pass a list?
-        results = tunner.run(gemm.tA, gemm.tB, gemm.m, gemm.n, gemm.k)
+        results = tunner.run(gemm.tA, gemm.tB, gemm.m, gemm.n, gemm.k, gemm.alpha, gemm.beta)
         # TODO: Check if bad?
         match = re.match(
             r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results

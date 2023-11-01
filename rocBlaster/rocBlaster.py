@@ -7,16 +7,10 @@ import subprocess
 import os
 import re
 import csv
-from threading import Thread
-from multiprocessing import Process, Pool, Queue
+from multiprocessing import Process, Queue
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
-import asyncio
 
-gemms = None
-
-total_old = 0
-total_new = 0
 
 class GEMM:
     """
@@ -224,9 +218,8 @@ class ExecutableRunner:
                     out_dict[gemm.key] = gemm
         return list(out_dict.values())
 
-def run_tuning(i, gemms_per_gpu, q):
-    # global total_new, total_old
-    tunner = rocBlasFinder(i)
+def run_tuning(gpu_id, gemms_per_gpu, q):
+    tunner = rocBlasFinder(gpu_id)
     for gemm in gemms_per_gpu:
         results = tunner.run(*gemm.run_args())
         # TODO: Check if bad?
@@ -243,14 +236,16 @@ def run_tuning(i, gemms_per_gpu, q):
         gemm.solution_index = solution_nu
         q.put((gemm, old_time, new_time), False)
 
-def init_processes(gpus, gemms):
+def init_processes(gemms):
+    gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
     q = Queue()
-    gemms_per_gpu_num = (len(gemms) // gpus) + 1
+    gemms_per_gpu_num = (len(gemms) // len(gpu_ids)) + 1
     processes = []
-    for i in range(gpus):
+    for i, gpu_id in enumerate(gpu_ids):
         gemms_per_gpu = gemms[i::gemms_per_gpu_num]
-        p = Process(target=run_tuning, args=(i, gemms_per_gpu, q))
+        p = Process(target=run_tuning, args=(gpu_id, gemms_per_gpu, q))
         p.start()
+        processes.append(p)
     for p in processes:
         p.join()
         p.close()
@@ -276,7 +271,6 @@ def main():
         default="BlasterOutput.csv",
     )
     parser.add_argument("--show_gemms", action="store_true")
-    parser.add_argument("--gpus", dest='gpus', type=int, default=1)
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
@@ -288,8 +282,8 @@ def main():
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
 
-    gemms, total_old, total_new = init_processes(args.gpus, gemms)
-
+    gemms, total_old, total_new = init_processes(gemms)
+    
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
         f"Old time: {total_old}{os.linesep}"

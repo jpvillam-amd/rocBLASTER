@@ -237,14 +237,14 @@ def run_tuning(gpu_id, in_q, out_q):
         gemm.solution_index = solution_nu
         out_q.put((gemm, old_time, new_time), False)
 
-def init_processes(gemms):
+def process_gemms(gemms):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
     in_q = Queue()
     out_q = Queue()
 
     for gemm in gemms:
         in_q.put(gemm)
-        
+
     processes = []
     for gpu_id in gpu_ids:
         p = Process(target=run_tuning, args=(gpu_id, in_q, out_q))
@@ -286,7 +286,7 @@ def main():
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
 
-    gemms, total_old, total_new = init_processes(gemms)
+    gemms, total_old, total_new = process_gemms(gemms)
     
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"

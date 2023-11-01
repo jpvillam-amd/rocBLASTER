@@ -50,7 +50,6 @@ struct MNKB {
 
 class rocBlasFinder {
 private:
-  // int deviceId=0;
   const rocblas_int cold_calls = 5;
   const rocblas_int hot_calls = 20;
 
@@ -68,7 +67,6 @@ private:
 
   rocblas_handle handle;
   hipStream_t stream;
-  // std::mutex m;
 
 public:
   rocBlasFinder(int deviceId) {
@@ -200,24 +198,29 @@ public:
                                            rocblas_gemm_flags_none));
     }
 
-    double time = 0;
-    double ave_time = 0;
-    double ave_time_default = 0;
-
+    float time = 0;
+    float ave_time = 0;
+    float ave_time_default = 0;
+    hipEvent_t start, stop;
+    hipEventCreate(&start);
+    hipEventCreate(&stop);
     // timing loop
-    time = get_time_us_sync(stream); // in microseconds
+    hipEventRecord(start, stream);
     for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
       CHECK_ROCBLAS_ERROR(rocblas_gemm_exM(GEMM_EX_ARGS,
                                            rocblas_gemm_algo_standard, 0,
                                            rocblas_gemm_flags_none));
     }
-    time = get_time_us_sync(stream) - time;
+    hipEventRecord(stop, stream);
+    hipEventSynchronize(stop);
+    hipEventElapsedTime(&time, start, stop);
+    time *= 1000;
 
     ave_time_default = time / hot_calls;
     std::cout << "Default time: " << ave_time_default << " us" << std::endl;
 
     // Benchmark loop
-    double bestTime = std::numeric_limits<double>::max();
+    float bestTime = std::numeric_limits<float>::max();
     rocblas_int bestSol = -1;
     for (auto sol : ary) {
       //  warmup
@@ -232,7 +235,7 @@ public:
         }
 
         // timing loop
-        time = get_time_us_sync(stream); // in microseconds
+        hipEventRecord(start, stream);
         for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
           auto ret =
               rocblas_gemm_exM(GEMM_EX_ARGS, rocblas_gemm_algo_solution_index,
@@ -241,7 +244,10 @@ public:
             throw(sol);
           }
         }
-        time = get_time_us_sync(stream) - time;
+        hipEventRecord(stop, stream);
+        hipEventSynchronize(stop);
+        hipEventElapsedTime(&time, start, stop);
+        time *= 1000;
 
         // track winner
         if (time < bestTime) {
@@ -267,8 +273,6 @@ public:
                   float alpha, float beta, int stride_a, int stride_b,
                   int stride_c, int batches, std::string input_type,
                   std::string output_type) {
-    // std::lock_guard<std::mutex> lock(this->m);
-    // CHECK_HIP_ERROR(hipSetDevice(this->deviceId));
     if (input_type == "bf16_r") {
       input_datatype = rocblas_datatype_bf16_r;
     } else {
@@ -382,24 +386,31 @@ public:
           rocblas_gemm_flags_none));
     }
 
-    double time = 0;
-    double ave_time = 0;
-    double ave_time_default = 0;
+    float time = 0;
+    float ave_time = 0;
+    float ave_time_default = 0;
 
     // timing loop
-    time = get_time_us_sync(stream); // in microseconds
+    hipEvent_t start, stop;
+    hipEventCreate(&start);
+    hipEventCreate(&stop);
+
+    hipEventRecord(start, stream);
     for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
       CHECK_ROCBLAS_ERROR(rocblas_st_batch_gemm_exM(
           GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_standard, 0,
           rocblas_gemm_flags_none));
     }
-    time = get_time_us_sync(stream) - time;
+    hipEventRecord(stop, stream);
+    hipEventSynchronize(stop);
+    hipEventElapsedTime(&time, start, stop);
+    time *= 1000;
 
     ave_time_default = time / hot_calls;
     std::cout << "Default time: " << ave_time_default << " us" << std::endl;
 
     // Benchmark loop
-    double bestTime = std::numeric_limits<double>::max();
+    float bestTime = std::numeric_limits<float>::max();
     rocblas_int bestSol = -1;
     for (auto sol : ary) {
       // std::cout << "Testing: " << sol << " Index: " <<
@@ -416,7 +427,7 @@ public:
         }
 
         // timing loop
-        time = get_time_us_sync(stream); // in microseconds
+        hipEventRecord(start, stream);
         for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
           auto ret = rocblas_st_batch_gemm_exM(GEMM_ST_BATCH_EX_ARGS,
                                                rocblas_gemm_algo_solution_index,
@@ -425,7 +436,10 @@ public:
             throw(sol);
           }
         }
-        time = get_time_us_sync(stream) - time;
+        hipEventRecord(stop, stream);
+        hipEventSynchronize(stop);
+        hipEventElapsedTime(&time, start, stop);
+        time *= 1000;
 
         // track winner
         if (time < bestTime) {

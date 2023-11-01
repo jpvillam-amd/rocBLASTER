@@ -7,14 +7,49 @@ import subprocess
 import os
 import re
 import csv
-
+from threading import Thread
+from multiprocessing import Process, Pool, Queue
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
+import asyncio
+
+gemms = None
+
+total_old = 0
+total_new = 0
 
 class GEMM:
     """
     Class to contain a gemm and its occurances.
     """
+
+    STRIDED_BATCHED_ROCBLAS_BENCH_RE = (
+        r"./rocblas-bench -f gemm_strided_batched_ex"
+        r" --transposeA (?P<TRANSPOSE_A>\w)"
+        r" --transposeB (?P<TRANSPOSE_B>\w)"
+        r" -m (?P<M>\d+)"
+        r" -n (?P<N>\d+)"
+        r" -k (?P<K>\d+)"
+        r" --alpha (?P<ALPHA>\d+)"
+        r" --a_type (?P<A_TYPE>\w+)"
+        r" --lda (?P<LDA>\d+)"
+        r" --stride_a (?P<STRIDE_A>\d+)"
+        r" --b_type (?P<B_TYPE>\w+)"
+        r" --ldb (?P<LDB>\d+)"
+        r" --stride_b (?P<STRIDE_B>\d+)"
+        r" --beta (?P<BETA>\d+)"
+        r" --c_type (?P<C_TYPE>\w+)"
+        r" --ldc (?P<LDC>\d+)"
+        r" --stride_c (?P<STRIDE_C>\d+)"
+        r" --d_type (?P<D_TYPE>\w+)"
+        r" --ldd (?P<LDD>\d+)"
+        r" --stride_d (?P<STRIDE_D>\d+)"
+        r" --batch_count (?P<BATCH_COUNT>\d+)"
+        r" --compute_type (?P<COMPUTE_TYPE>\w+)"
+        r" --algo (?P<ALGO>\d+)"
+        r" --solution_index (?P<SOLUTION_INDEX>\d+)"
+        r" --flags (?P<FLAGS>\w+)"
+    )
 
     GENERIC_ROCBLAS_BENCH_RE = (
         r"./rocblas-bench -f gemm_ex"
@@ -40,28 +75,47 @@ class GEMM:
     )
 
     def __init__(self, rocblas_bench_string):
-        self.match = re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string)
+        # First match the gemm
         self.rocblas_bench_string = rocblas_bench_string
+        if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
+            self.match = True
+            self.gemm_type = "Generic"
+        elif match := re.match(
+            self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string
+        ):
+            self.match = True
+            self.gemm_type = "Strided batched"
+        else:
+            self.match = False
+
+        # Collect data in new if so we can share code
         if self.match:
             self.count = 1
-            self.tA = self.match.group("TRANSPOSE_A")
-            self.tB = self.match.group("TRANSPOSE_B")
-            self.m = int(self.match.group("M"))
-            self.n = int(self.match.group("N"))
-            self.k = int(self.match.group("K"))
-            self.alpha = int(self.match.group("ALPHA"))
-            self.lda = int(self.match.group("LDA"))
-            self.ldb = int(self.match.group("LDB"))
-            self.beta = int(self.match.group("BETA"))
-            self.ldc = int(self.match.group("LDC"))
-            self.compute_type = self.match.group("COMPUTE_TYPE")
-            self.input_type = self.match.group("A_TYPE")
-            self.output_type = self.match.group("C_TYPE")
-            self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
-            self.solution_index = int(self.match.group("SOLUTION_INDEX"))
+            self.tA = match.group("TRANSPOSE_A")
+            self.tB = match.group("TRANSPOSE_B")
+            self.m = int(match.group("M"))
+            self.n = int(match.group("N"))
+            self.k = int(match.group("K"))
+            self.alpha = float(match.group("ALPHA"))
+            self.lda = int(match.group("LDA"))
+            self.ldb = int(match.group("LDB"))
+            self.beta = float(match.group("BETA"))
+            self.ldc = int(match.group("LDC"))
+            self.compute_type = match.group("COMPUTE_TYPE")
+            self.a_type = match.group("A_TYPE")
+            self.solution_index = match.group("SOLUTION_INDEX")
+            if self.gemm_type == "Generic":
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
+            elif self.gemm_type == "Strided batched":
+                self.stride_a = int(match.group("STRIDE_A"))
+                self.stride_b = int(match.group("STRIDE_B"))
+                self.stride_c = int(match.group("STRIDE_C"))
+                self.stride_d = int(match.group("STRIDE_D"))
+                self.batch_count = int(match.group("BATCH_COUNT"))
+                self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
 
     def __bool__(self):
-        return True if self.match else False
+        return self.match
 
     def inc_count(self, number=1):
         self.count += number
@@ -69,24 +123,67 @@ class GEMM:
     def __repr__(self):
         return f"Instances: {self.count} M: {self.m} N: {self.n} K: {self.k} solution_index: {self.solution_index}\n"
 
+    def run_args(self):
+        if self.gemm_type == "Generic":
+            return self.tA, self.tB, self.m, self.n, self.k, self.alpha, self.beta, self.a_type, self.a_type
+        elif self.gemm_type == "Strided batched":
+            return (
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.stride_a,
+                self.stride_b,
+                self.stride_c,
+                self.batch_count,
+                self.a_type,
+                self.a_type
+            )
+
     def csv_list(self):
-        return [
-            self.tA,
-            self.tB,
-            self.m,
-            self.n,
-            1,
-            self.k,
-            self.alpha,
-            self.beta,
-            self.lda,
-            self.ldb,
-            self.ldc,
-            self.input_type,
-            self.output_type,
-            self.compute_type,
-            self.solution_index,
-        ]
+        # Only two possible formats? from snooping: UserDrivenTuningParser.cpp in tensile
+        if self.gemm_type == "Generic":
+            return [
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                1,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.lda,
+                self.ldb,
+                self.ldc,
+                self.a_type,
+                self.a_type,
+                self.compute_type,
+                self.solution_index,
+            ]
+        else:
+            return [
+                self.tA,
+                self.tB,
+                self.m,
+                self.n,
+                self.batch_count,
+                self.k,
+                self.alpha,
+                self.beta,
+                self.lda,
+                self.ldb,
+                self.ldc,
+                self.stride_a,
+                self.stride_b,
+                self.stride_c,
+                self.a_type,
+                self.a_type,
+                self.compute_type,
+                self.solution_index,
+            ]
 
 
 class ExecutableRunner:
@@ -100,11 +197,15 @@ class ExecutableRunner:
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
-        # TODO: Needs a "try catch"
+        # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
-            self.executable, stderr=subprocess.PIPE, text=True, env=env
+            self.executable,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
         )
-        self.process_output = process.stderr
+        self.process_output = process.stdout
         if show_output:
             print(f"Output from subprocess.run: {self.process_output}")
 
@@ -123,6 +224,47 @@ class ExecutableRunner:
                     out_dict[gemm.key] = gemm
         return list(out_dict.values())
 
+def run_tuning(i, gemms_per_gpu, q):
+    # global total_new, total_old
+    tunner = rocBlasFinder(i)
+    for gemm in gemms_per_gpu:
+        results = tunner.run(*gemm.run_args())
+        # TODO: Check if bad?
+        match = re.match(
+            r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
+        )
+        default_time = float(match.group(1))
+        winning_time = float(match.group(2))
+        solution_nu = int(match.group(3))
+        print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
+        old_time = int(gemm.count) * default_time
+        new_time = int(gemm.count) * winning_time
+        # Write new solution to gemm
+        gemm.solution_index = solution_nu
+        q.put((gemm, old_time, new_time), False)
+
+def init_processes(gpus, gemms):
+    q = Queue()
+    gemms_per_gpu_num = (len(gemms) // gpus) + 1
+    processes = []
+    for i in range(gpus):
+        gemms_per_gpu = gemms[i::gemms_per_gpu_num]
+        p = Process(target=run_tuning, args=(i, gemms_per_gpu, q))
+        p.start()
+    for p in processes:
+        p.join()
+        p.close()
+
+    total_old = 0
+    total_new = 0
+    gemms = []
+    while not q.empty():
+        gemm, old_time, new_time = q.get()
+        gemms.append(gemm)
+        total_old += old_time
+        total_new += new_time
+    return gemms, total_old, total_new
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -134,6 +276,7 @@ def main():
         default="BlasterOutput.csv",
     )
     parser.add_argument("--show_gemms", action="store_true")
+    parser.add_argument("--gpus", dest='gpus', type=int, default=1)
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
@@ -145,24 +288,8 @@ def main():
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
 
-    tunner = rocBlasFinder()
-    total_old = 0
-    total_new = 0
-    for gemm in gemms:
-        # TODO: Best to pass a list?
-        results = tunner.run(gemm.tA, gemm.tB, gemm.m, gemm.n, gemm.k)
-        # TODO: Check if bad?
-        match = re.match(
-            r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
-        )
-        default_time = float(match.group(1))
-        winning_time = float(match.group(2))
-        solution_nu = int(match.group(3))
-        print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
-        total_old += int(gemm.count) * default_time
-        total_new += int(gemm.count) * winning_time
-        # Write new solution to gemm
-        gemm.solution_index = solution_nu
+    gemms, total_old, total_new = init_processes(args.gpus, gemms)
+
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
         f"Old time: {total_old}{os.linesep}"

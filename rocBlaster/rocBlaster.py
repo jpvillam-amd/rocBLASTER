@@ -218,9 +218,10 @@ class ExecutableRunner:
                     out_dict[gemm.key] = gemm
         return list(out_dict.values())
 
-def run_tuning(gpu_id, gemms_per_gpu, q):
+def run_tuning(gpu_id, in_q, out_q):
     tunner = rocBlasFinder(gpu_id)
-    for gemm in gemms_per_gpu:
+    while not in_q.empty():
+        gemm = in_q.get()
         results = tunner.run(*gemm.run_args())
         # TODO: Check if bad?
         match = re.match(
@@ -234,16 +235,19 @@ def run_tuning(gpu_id, gemms_per_gpu, q):
         new_time = int(gemm.count) * winning_time
         # Write new solution to gemm
         gemm.solution_index = solution_nu
-        q.put((gemm, old_time, new_time), False)
+        out_q.put((gemm, old_time, new_time), False)
 
 def init_processes(gemms):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
-    q = Queue()
-    gemms_per_gpu_num = (len(gemms) // len(gpu_ids)) + 1
+    in_q = Queue()
+    out_q = Queue()
+
+    for gemm in gemms:
+        in_q.put(gemm)
+        
     processes = []
-    for i, gpu_id in enumerate(gpu_ids):
-        gemms_per_gpu = gemms[i::gemms_per_gpu_num]
-        p = Process(target=run_tuning, args=(gpu_id, gemms_per_gpu, q))
+    for gpu_id in gpu_ids:
+        p = Process(target=run_tuning, args=(gpu_id, in_q, out_q))
         p.start()
         processes.append(p)
     for p in processes:
@@ -253,8 +257,8 @@ def init_processes(gemms):
     total_old = 0
     total_new = 0
     gemms = []
-    while not q.empty():
-        gemm, old_time, new_time = q.get()
+    while not out_q.empty():
+        gemm, old_time, new_time = out_q.get()
         gemms.append(gemm)
         total_old += old_time
         total_new += new_time

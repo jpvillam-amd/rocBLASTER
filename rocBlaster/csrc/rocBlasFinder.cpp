@@ -105,9 +105,6 @@ public:
     // GEMM parameters
     rocblas_int lda, ldb, ldc, size_a, size_b, size_c;
 
-    std::cout << "TransA: " << GEMM_size.ta << ", TransB: " << GEMM_size.tb
-              << ", M: " << GEMM_size.m << ", N: " << GEMM_size.n
-              << ", K: " << GEMM_size.k << std::endl;
     if (GEMM_size.ta == "T") {
       trans_a = rocblas_operation_transpose;
     }
@@ -182,7 +179,6 @@ public:
     CHECK_ROCBLAS_ERROR(rocblas_gemm_ex_get_solutions(
         GEMM_EX_ARGS, rocblas_gemm_algo_solution_index, rocblas_gemm_flags_none,
         NULL, &size));
-    std::cout << size << " solution(s) found" << std::endl;
 
     // Fill array with list of solutions
     std::vector<rocblas_int> ary(size);
@@ -217,7 +213,6 @@ public:
     time *= 1000;
 
     ave_time_default = time / hot_calls;
-    std::cout << "Default time: " << ave_time_default << " us" << std::endl;
 
     // Benchmark loop
     float bestTime = std::numeric_limits<float>::max();
@@ -259,8 +254,17 @@ public:
       }
     }
     ave_time = bestTime / hot_calls;
-    std::cout << "Winner: " << ave_time << " us "
-              << "(sol " << bestSol << ")" << std::endl;
+    printf(R"(
+      TransA: %s, TransB: %s, M: %d, N: %d, K: %d
+      %d solution(s) found
+      Default time: %f us
+      Winner: %f us (sol %d)
+      Improved by: %f
+    )",
+           GEMM_size.ta.c_str(), GEMM_size.tb.c_str(), GEMM_size.m, GEMM_size.n,
+           GEMM_size.k, size, ave_time_default, ave_time, bestSol,
+           (ave_time_default - ave_time) / ave_time_default);
+
     return "Default: " + std::to_string(ave_time_default) +
            " Winner: " + std::to_string(ave_time) +
            " Solution: " + std::to_string(bestSol);
@@ -289,9 +293,6 @@ public:
     // GEMM parameters
     rocblas_int lda, ldb, ldc, size_a, size_b, size_c;
 
-    std::cout << "TransA: " << GEMM_size.ta << ", TransB: " << GEMM_size.tb
-              << ", M: " << GEMM_size.m << ", N: " << GEMM_size.n
-              << ", K: " << GEMM_size.k << std::endl;
     if (GEMM_size.ta == "T") {
       trans_a = rocblas_operation_transpose;
     }
@@ -370,7 +371,6 @@ public:
     CHECK_ROCBLAS_ERROR(rocblas_gemm_strided_batched_ex_get_solutions(
         GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_solution_index,
         rocblas_gemm_flags_none, NULL, &size));
-    std::cout << size << " solution(s) found" << std::endl;
 
     // Fill array with list of solutions
     std::vector<rocblas_int> ary(size);
@@ -451,8 +451,17 @@ public:
       }
     }
     ave_time = bestTime / hot_calls;
-    std::cout << "Winner: " << ave_time << " us "
-              << "(sol " << bestSol << ")" << std::endl;
+    printf(R"(
+      TransA: %s, TransB: %s, M: %d, N: %d, K: %d
+      %d solution(s) found
+      Default time: %f us
+      Winner: %f us (sol %d)
+      Improved by: %f
+    )",
+           GEMM_size.ta.c_str(), GEMM_size.tb.c_str(), GEMM_size.m, GEMM_size.n,
+           GEMM_size.k, size, ave_time_default, ave_time, bestSol,
+           (ave_time_default - ave_time) / ave_time_default);
+
     return "Default: " + std::to_string(ave_time_default) +
            " Winner: " + std::to_string(ave_time) +
            " Solution: " + std::to_string(bestSol);

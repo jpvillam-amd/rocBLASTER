@@ -230,7 +230,6 @@ def run_tuning(gpu_id, in_q, out_q):
         default_time = float(match.group(1))
         winning_time = float(match.group(2))
         solution_nu = int(match.group(3))
-        print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
         old_time = int(gemm.count) * default_time
         new_time = int(gemm.count) * winning_time
         # Write new solution to gemm

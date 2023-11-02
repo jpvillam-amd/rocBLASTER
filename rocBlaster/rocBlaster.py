@@ -235,7 +235,7 @@ def run_tuning(gpu_id, in_q, out_q):
         new_time = int(gemm.count) * winning_time
         # Write new solution to gemm
         gemm.solution_index = solution_nu
-        out_q.put((gemm, old_time, new_time), False)
+        out_q.put((gemm, old_time, new_time))
 
 def process_gemms(gemms):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]

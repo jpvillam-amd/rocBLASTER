@@ -245,7 +245,7 @@ def process_gemms(gemms):
         in_q.put(gemm)
 
     processes = []
-    for gpu_id in gpu_ids:
+    for gpu_id in range(len(gpu_ids)):
         p = Process(target=run_tuning, args=(gpu_id, in_q, out_q))
         p.start()
         processes.append(p)

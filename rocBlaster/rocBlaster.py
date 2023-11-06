@@ -234,7 +234,8 @@ def run_tuning(gpu_id, in_q, out_q):
         new_time = int(gemm.count) * winning_time
         # Write new solution to gemm
         gemm.solution_index = solution_nu
-        out_q.put((gemm, old_time, new_time))
+        if new_time<old_time:
+            out_q.put((gemm, old_time, new_time))
 
 def process_gemms(gemms):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
@@ -268,7 +269,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
-        help="Output file with the results. NOT IMPLEMENTED YET",
+        help="Output file with the results.",
         action="store",
         dest="output",
         default="BlasterOutput.csv",

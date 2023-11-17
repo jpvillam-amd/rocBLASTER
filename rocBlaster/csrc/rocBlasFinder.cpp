@@ -407,7 +407,6 @@ public:
     time *= 1000;
 
     ave_time_default = time / hot_calls;
-    std::cout << "Default time: " << ave_time_default << " us" << std::endl;
 
     // Benchmark loop
     float bestTime = std::numeric_limits<float>::max();

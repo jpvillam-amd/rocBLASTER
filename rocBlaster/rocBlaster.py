@@ -7,6 +7,7 @@ import subprocess
 import os
 import re
 import csv
+import mimetypes
 from multiprocessing import Process, Queue
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
@@ -278,11 +279,26 @@ def main():
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
+    mime = mimetypes.guess_type(args.executable[0])
     # Run and collect
-    executable = ExecutableRunner(args.executable)
-    executable.run_and_collect()
-    print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
-    gemms = executable.get_unique_gemms()
+    if mime[0] == 'text/plain':
+        # Work with ROCBLAS_LOG_BENCH_PATH
+        out_dict = {}
+        with open(args.executable[0], 'r') as f:
+            for line in f.readlines():
+                if gemm := GEMM(line):
+                    # TODO Seems like there should be a better way?
+                    if gemm.key in out_dict:
+                        out_dict[gemm.key].inc_count()
+                    else:
+                        out_dict[gemm.key] = gemm
+            gemms = list(out_dict.values())
+    else:
+        executable = ExecutableRunner(args.executable)
+        executable.run_and_collect()
+        print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
+        gemms = executable.get_unique_gemms()
+
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
 

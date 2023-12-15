@@ -253,6 +253,11 @@ public:
         std::cout << "Error on solution: " << solc << std::endl;
       }
     }
+
+    CHECK_HIP_ERROR(hipFreeAsync(&da, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(&db, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(&dc, stream));
+
     ave_time = bestTime / hot_calls;
     printf(R"(
       TransA: %s, TransB: %s, M: %d, N: %d, K: %d

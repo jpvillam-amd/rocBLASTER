@@ -232,6 +232,11 @@ def run_tuning(gpu_id, in_q, out_q, timeout):
 
         try:
             results = tunner.run(*gemm.run_args())
+        except Exception as exc:
+            signal.alarm(0)
+            print('\n', gemm, exc)
+        else:
+            signal.alarm(0)
             # TODO: Check if bad?
             match = re.match(
                 r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
@@ -245,10 +250,6 @@ def run_tuning(gpu_id, in_q, out_q, timeout):
             gemm.solution_index = solution_nu
             if new_time<old_time:
                 out_q.put((gemm, old_time, new_time))
-        except Exception as exc:
-            print('\n', gemm, exc)
-
-        signal.alarm(0)
 
 
 def process_gemms(gemms, timeout):

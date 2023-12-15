@@ -253,8 +253,8 @@ def run_tuning(gpu_id, in_q, out_q, timeout):
 
 def process_gemms(gemms, timeout):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
-    in_q = Queue()
-    out_q = Queue()
+    in_q = Queue(300)
+    out_q = Queue(300)
 
     for gemm in gemms:
         in_q.put(gemm)

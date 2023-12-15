@@ -225,7 +225,7 @@ def handler(signum, frame):
 
 def run_tuning(gpu_id, in_q, out_q, timeout):
     tunner = rocBlasFinder(gpu_id)
-    while not in_q.empty():
+    while in_q.qsize():
         gemm = in_q.get()
         signal.signal(signal.SIGALRM, handler)
         signal.alarm(timeout)
@@ -266,13 +266,13 @@ def process_gemms(gemms, timeout):
         p.start()
         processes.append(p)
     for p in processes:
-        p.join()
+        p.join(timeout=len(gemms)*timeout)
         p.close()
 
     total_old = 0
     total_new = 0
     gemms = []
-    while not out_q.empty():
+    while out_q.qsize():
         gemm, old_time, new_time = out_q.get()
         gemms.append(gemm)
         total_old += old_time

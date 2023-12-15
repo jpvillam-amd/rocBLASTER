@@ -223,12 +223,12 @@ class ExecutableRunner:
 def handler(signum, frame):
     raise Exception("time out")
 
-def run_tuning(gpu_id, in_q, out_q):
+def run_tuning(gpu_id, in_q, out_q, timeout):
     tunner = rocBlasFinder(gpu_id)
     while not in_q.empty():
         gemm = in_q.get()
         signal.signal(signal.SIGALRM, handler)
-        signal.alarm(60)
+        signal.alarm(timeout)
 
         try:
             results = tunner.run(*gemm.run_args())
@@ -246,12 +246,12 @@ def run_tuning(gpu_id, in_q, out_q):
             if new_time<old_time:
                 out_q.put((gemm, old_time, new_time))
         except Exception as exc:
-            print(exc)
+            print('\n', gemm, exc)
 
         signal.alarm(0)
 
 
-def process_gemms(gemms):
+def process_gemms(gemms, timeout):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
     in_q = Queue()
     out_q = Queue()
@@ -261,7 +261,7 @@ def process_gemms(gemms):
 
     processes = []
     for gpu_id in range(len(gpu_ids)):
-        p = Process(target=run_tuning, args=(gpu_id, in_q, out_q))
+        p = Process(target=run_tuning, args=(gpu_id, in_q, out_q, timeout))
         p.start()
         processes.append(p)
     for p in processes:
@@ -289,6 +289,7 @@ def main():
         default="BlasterOutput.csv",
     )
     parser.add_argument("--show_gemms", action="store_true")
+    parser.add_argument("--timeout", default=60, type=int, help="Gemm tuning timeout(seconds).")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
@@ -315,7 +316,7 @@ def main():
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
 
-    gemms, total_old, total_new = process_gemms(gemms)
+    gemms, total_old, total_new = process_gemms(gemms, args.timeout)
     
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"

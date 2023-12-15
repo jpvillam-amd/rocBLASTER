@@ -9,6 +9,7 @@ import re
 import csv
 import mimetypes
 from multiprocessing import Process, Queue
+import signal
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
 
@@ -219,24 +220,36 @@ class ExecutableRunner:
                     out_dict[gemm.key] = gemm
         return list(out_dict.values())
 
+def handler(signum, frame):
+    raise Exception("time out")
+
 def run_tuning(gpu_id, in_q, out_q):
     tunner = rocBlasFinder(gpu_id)
     while not in_q.empty():
         gemm = in_q.get()
-        results = tunner.run(*gemm.run_args())
-        # TODO: Check if bad?
-        match = re.match(
-            r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
-        )
-        default_time = float(match.group(1))
-        winning_time = float(match.group(2))
-        solution_nu = int(match.group(3))
-        old_time = int(gemm.count) * default_time
-        new_time = int(gemm.count) * winning_time
-        # Write new solution to gemm
-        gemm.solution_index = solution_nu
-        if new_time<old_time:
-            out_q.put((gemm, old_time, new_time))
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(60)
+
+        try:
+            results = tunner.run(*gemm.run_args())
+            # TODO: Check if bad?
+            match = re.match(
+                r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
+            )
+            default_time = float(match.group(1))
+            winning_time = float(match.group(2))
+            solution_nu = int(match.group(3))
+            old_time = int(gemm.count) * default_time
+            new_time = int(gemm.count) * winning_time
+            # Write new solution to gemm
+            gemm.solution_index = solution_nu
+            if new_time<old_time:
+                out_q.put((gemm, old_time, new_time))
+        except Exception as exc:
+            print(exc)
+
+        signal.alarm(0)
+
 
 def process_gemms(gemms):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]

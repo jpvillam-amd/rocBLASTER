@@ -193,6 +193,7 @@ class ExecutableRunner:
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
+        env["ROCBLAS_LOG_BENCH_PATH"] = env.get("ROCBLAS_LOG_BENCH_PATH", "/tmp/rocblas_bench_log.txt")
         # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
             self.executable,
@@ -201,24 +202,10 @@ class ExecutableRunner:
             text=True,
             env=env,
         )
-        self.process_output = process.stdout
+        # self.process_output = process.stdout
         if show_output:
-            print(f"Output from subprocess.run: {self.process_output}")
-
-    def get_unique_gemms(self):
-        """
-        Return every unique gemm with the form [Count, TransposeA, TransposeB, M, N, K]
-        """
-        out_dict = {}
-        lines = self.process_output.splitlines()
-        for line in lines:
-            if gemm := GEMM(line):
-                # TODO Seems like there should be a better way?
-                if gemm.key in out_dict:
-                    out_dict[gemm.key].inc_count()
-                else:
-                    out_dict[gemm.key] = gemm
-        return list(out_dict.values())
+            print(f"Output from subprocess.run: {process.stdout}")
+        return env["ROCBLAS_LOG_BENCH_PATH"]
 
 def handler(signum, frame):
     raise Exception("time out")
@@ -254,8 +241,8 @@ def run_tuning(gpu_id, in_q, out_q, timeout):
 
 def process_gemms(gemms, timeout):
     gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
-    in_q = Queue(300)
-    out_q = Queue(300)
+    in_q = Queue()
+    out_q = Queue()
 
     for gemm in gemms:
         in_q.put(gemm)
@@ -291,28 +278,31 @@ def main():
     )
     parser.add_argument("--show_gemms", action="store_true")
     parser.add_argument("--timeout", default=60, type=int, help="Gemm tuning timeout(seconds).")
+    parser.add_argument("--show_output", action="store_true")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
     mime = mimetypes.guess_type(args.executable[0])
-    # Run and collect
+    
     if mime[0] == 'text/plain':
         # Work with ROCBLAS_LOG_BENCH_PATH
-        out_dict = {}
-        with open(args.executable[0], 'r') as f:
-            for line in f.readlines():
-                if gemm := GEMM(line):
-                    # TODO Seems like there should be a better way?
-                    if gemm.key in out_dict:
-                        out_dict[gemm.key].inc_count()
-                    else:
-                        out_dict[gemm.key] = gemm
-            gemms = list(out_dict.values())
+        rocblas_bench_log = args.executable[0]
     else:
+        # Run and collect
         executable = ExecutableRunner(args.executable)
-        executable.run_and_collect()
+        rocblas_bench_log = executable.run_and_collect(args.show_output)
         print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
-        gemms = executable.get_unique_gemms()
+
+    out_dict = {}
+    with open(rocblas_bench_log, 'r') as f:
+        for line in f.readlines():
+            if gemm := GEMM(line):
+                # TODO Seems like there should be a better way?
+                if gemm.key in out_dict:
+                    out_dict[gemm.key].inc_count()
+                else:
+                    out_dict[gemm.key] = gemm
+        gemms = list(out_dict.values())
 
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")

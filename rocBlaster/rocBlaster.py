@@ -7,7 +7,9 @@ import subprocess
 import os
 import re
 import csv
-
+import mimetypes
+from multiprocessing import Process, Queue, set_start_method
+import signal
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
 
@@ -70,13 +72,14 @@ class GEMM:
 
     def __init__(self, rocblas_bench_string):
         # First match the gemm
+        self.rocblas_bench_string = rocblas_bench_string
         if match := re.match(self.GENERIC_ROCBLAS_BENCH_RE, rocblas_bench_string):
-            self.match = match
+            self.match = True
             self.gemm_type = "Generic"
         elif match := re.match(
             self.STRIDED_BATCHED_ROCBLAS_BENCH_RE, rocblas_bench_string
         ):
-            self.match = match
+            self.match = True
             self.gemm_type = "Strided batched"
         else:
             self.match = False
@@ -84,40 +87,41 @@ class GEMM:
         # Collect data in new if so we can share code
         if self.match:
             self.count = 1
-            self.tA = self.match.group("TRANSPOSE_A")
-            self.tB = self.match.group("TRANSPOSE_B")
-            self.m = int(self.match.group("M"))
-            self.n = int(self.match.group("N"))
-            self.k = int(self.match.group("K"))
-            self.alpha = float(self.match.group("ALPHA"))
-            self.lda = int(self.match.group("LDA"))
-            self.ldb = int(self.match.group("LDB"))
-            self.beta = float(self.match.group("BETA"))
-            self.ldc = int(self.match.group("LDC"))
-            self.compute_type = self.match.group("COMPUTE_TYPE")
-            self.a_type = self.match.group("A_TYPE")
+            self.tA = match.group("TRANSPOSE_A")
+            self.tB = match.group("TRANSPOSE_B")
+            self.m = int(match.group("M"))
+            self.n = int(match.group("N"))
+            self.k = int(match.group("K"))
+            self.alpha = float(match.group("ALPHA"))
+            self.lda = int(match.group("LDA"))
+            self.ldb = int(match.group("LDB"))
+            self.beta = float(match.group("BETA"))
+            self.ldc = int(match.group("LDC"))
+            self.compute_type = match.group("COMPUTE_TYPE")
+            self.a_type = match.group("A_TYPE")
+            self.solution_index = match.group("SOLUTION_INDEX")
             if self.gemm_type == "Generic":
                 self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k}"
             elif self.gemm_type == "Strided batched":
-                self.stride_a = int(self.match.group("STRIDE_A"))
-                self.stride_b = int(self.match.group("STRIDE_B"))
-                self.stride_c = int(self.match.group("STRIDE_C"))
-                self.stride_d = int(self.match.group("STRIDE_D"))
-                self.batch_count = int(self.match.group("BATCH_COUNT"))
+                self.stride_a = int(match.group("STRIDE_A"))
+                self.stride_b = int(match.group("STRIDE_B"))
+                self.stride_c = int(match.group("STRIDE_C"))
+                self.stride_d = int(match.group("STRIDE_D"))
+                self.batch_count = int(match.group("BATCH_COUNT"))
                 self.key = f"ta:{self.tA},tb:{self.tB},m:{self.m},n{self.n},k{self.k},sa:{self.stride_a},sb:{self.stride_b},sc:{self.stride_c},bc:{self.batch_count}"
 
     def __bool__(self):
-        return True if self.match else False
+        return self.match
 
     def inc_count(self, number=1):
         self.count += number
 
     def __repr__(self):
-        return f"Instances: {self.count} M: {self.m} n: {self.n} k: {self.k}"
+        return f"Instances: {self.count} M: {self.m} N: {self.n} K: {self.k} solution_index: {self.solution_index}\n"
 
     def run_args(self):
         if self.gemm_type == "Generic":
-            return self.tA, self.tB, self.m, self.n, self.k, self.alpha, self.beta
+            return self.tA, self.tB, self.m, self.n, self.k, self.alpha, self.beta, self.a_type, self.a_type
         elif self.gemm_type == "Strided batched":
             return (
                 self.tA,
@@ -131,6 +135,8 @@ class GEMM:
                 self.stride_b,
                 self.stride_c,
                 self.batch_count,
+                self.a_type,
+                self.a_type
             )
 
     def csv_list(self):
@@ -187,6 +193,7 @@ class ExecutableRunner:
     def run_and_collect(self, show_output=False):
         env = os.environ.copy()
         env["ROCBLAS_LAYER"] = "2"
+        env["ROCBLAS_LOG_BENCH_PATH"] = env.get("ROCBLAS_LOG_BENCH_PATH", "/tmp/rocblas_bench_log.txt")
         # TODO: Needs to swap to "4" and read csv
         process = subprocess.run(
             self.executable,
@@ -195,65 +202,125 @@ class ExecutableRunner:
             text=True,
             env=env,
         )
-        self.process_output = process.stdout
+        # self.process_output = process.stdout
         if show_output:
-            print(f"Output from subprocess.run: {self.process_output}")
+            print(f"Output from subprocess.run: {process.stdout}")
+        return env["ROCBLAS_LOG_BENCH_PATH"]
 
-    def get_unique_gemms(self):
-        """
-        Return every unique gemm with the form [Count, TransposeA, TransposeB, M, N, K]
-        """
-        out_dict = {}
-        lines = self.process_output.splitlines()
-        for line in lines:
-            if gemm := GEMM(line):
-                # TODO Seems like there should be a better way?
-                if gemm.key in out_dict:
-                    out_dict[gemm.key].inc_count
-                else:
-                    out_dict[gemm.key] = gemm
-        return list(out_dict.values())
+def handler(signum, frame):
+    raise Exception("time out")
+
+def run_tuning(gpu_id, in_q, out_q, timeout):
+    tunner = rocBlasFinder(gpu_id)
+    while in_q.qsize():
+        gemm = in_q.get()
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(timeout)
+
+        try:
+            results = tunner.run(*gemm.run_args())
+        except Exception as exc:
+            signal.alarm(0)
+            print('\n', gemm, exc)
+        else:
+            signal.alarm(0)
+            # TODO: Check if bad?
+            match = re.match(
+                r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
+            )
+            default_time = float(match.group(1))
+            winning_time = float(match.group(2))
+            solution_nu = int(match.group(3))
+            old_time = int(gemm.count) * default_time
+            new_time = int(gemm.count) * winning_time
+            # Write new solution to gemm
+            gemm.solution_index = solution_nu
+            if new_time<old_time:
+                out_q.put((gemm, old_time, new_time))
+    del tunner
+
+
+def process_gemms(gemms, timeout):
+    gpu_ids = [int(gpu_id) for gpu_id in os.environ.get('HIP_VISIBLE_DEVICES', '0').split(',')]
+    in_q = Queue()
+    out_q = Queue()
+
+    for gemm in gemms:
+        in_q.put(gemm)
+
+    processes = []
+    for gpu_id in range(len(gpu_ids)):
+        p = Process(target=run_tuning, args=(gpu_id, in_q, out_q, timeout))
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()
+        p.close()
+
+    total_old = 0
+    total_new = 0
+    gemms = []
+    while out_q.qsize():
+        gemm, old_time, new_time = out_q.get()
+        gemms.append(gemm)
+        total_old += old_time
+        total_new += new_time
+    return gemms, total_old, total_new
 
 
 def main():
+    set_start_method('spawn')
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
-        help="Output file with the results. NOT IMPLEMENTED YET",
+        help="Output file with the results.",
         action="store",
         dest="output",
         default="BlasterOutput.csv",
     )
     parser.add_argument("--show_gemms", action="store_true")
+    parser.add_argument("--timeout", default=60, type=int, help="Gemm tuning timeout(seconds).")
+    parser.add_argument("--show_output", action="store_true")
+    parser.add_argument("--chunk_size", default=64, type=int, help="split gemms to chunks in order to avoid multi processing stuck")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
-    # Run and collect
-    executable = ExecutableRunner(args.executable)
-    executable.run_and_collect()
-    print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
-    gemms = executable.get_unique_gemms()
+    mime = mimetypes.guess_type(args.executable[0])
+    
+    if mime[0] == 'text/plain':
+        # Work with ROCBLAS_LOG_BENCH_PATH
+        rocblas_bench_log = args.executable[0]
+    else:
+        # Run and collect
+        executable = ExecutableRunner(args.executable)
+        rocblas_bench_log = executable.run_and_collect(args.show_output)
+        print(f"{os.linesep}{'>'*20:<20}{' rocBlas Output ':^20}{'<'*20:>20}{os.linesep}")
+
+    out_dict = {}
+    with open(rocblas_bench_log, 'r') as f:
+        for line in f.readlines():
+            if gemm := GEMM(line):
+                # TODO Seems like there should be a better way?
+                if gemm.key in out_dict:
+                    out_dict[gemm.key].inc_count()
+                else:
+                    out_dict[gemm.key] = gemm
+        gemms = list(out_dict.values())
+
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
-
-    tunner = rocBlasFinder()
+    
+    final_gemms = []
     total_old = 0
     total_new = 0
-    for gemm in gemms:
-        # TODO: Best to pass a list?
-        results = tunner.run(*gemm.run_args())
-        # TODO: Check if bad?
-        match = re.match(
-            r"Default: (\d+.\d+) Winner: (\d+.\d+) Solution: (\d+)", results
-        )
-        default_time = float(match.group(1))
-        winning_time = float(match.group(2))
-        solution_nu = int(match.group(3))
-        print(f"Improved by: {(default_time-winning_time)/default_time}{os.linesep}")
-        total_old += int(gemm.count) * default_time
-        total_new += int(gemm.count) * winning_time
-        # Write new solution to gemm
-        gemm.solution_index = solution_nu
+    for i in range(0, len(gemms), args.chunk_size):
+        sub_gemms = gemms[i : i + args.chunk_size]
+        sub_gemms, sub_old, sub_new = process_gemms(sub_gemms, args.timeout)
+        final_gemms += sub_gemms
+        total_old += sub_old
+        total_new += sub_new
+
+    gemms = final_gemms
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
         f"Old time: {total_old}{os.linesep}"

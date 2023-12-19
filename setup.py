@@ -13,6 +13,7 @@ from setuptools.command.install_lib import install_lib
 from distutils.command.install_data import install_data
 
 
+GPU_TARGETS = os.environ.get('GPU_TARGETS', 'native')
 # A CMakeExtension needs a sourcedir instead of a file list.
 # The name must be the _single_ output extension from the CMake build.
 # If you need multiple extensions, see scikit-build.
@@ -38,7 +39,7 @@ class CMakeBuild(build_ext):
         env = os.environ.copy()
         env["CXX"] = "/opt/rocm/bin/hipcc"
 
-        subprocess.run(["cmake", ext.sourcedir], cwd=build_temp, check=True, env=env)
+        subprocess.run(["cmake", f"-D GPU_TARGETS={GPU_TARGETS}", "-D CMAKE_CXX_COMPILER:PATH=/opt/rocm/bin/amdclang++", "-D CMAKE_PREFIX_PATH=/opt/rocm", ext.sourcedir], cwd=build_temp, check=True, env=env)
         subprocess.run(["make"], cwd=build_temp, check=True)
         # so_files = glob.glob(f"{build_temp}/*.so")
         # print(f"found {so_files} from {build_temp}/*")

@@ -13,8 +13,10 @@ set(CXX "${ROCM_PATH}/bin/hipcc")
 
 project(Tunner)
 # combined list
-find_package(HIP)
-find_package(rocblas)
+find_package(rocblas REQUIRED)
+find_package(HIP REQUIRED)
+find_package(Threads REQUIRED)
+
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG REQUIRED)
 

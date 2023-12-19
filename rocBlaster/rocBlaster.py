@@ -237,6 +237,7 @@ def run_tuning(gpu_id, in_q, out_q, timeout):
             gemm.solution_index = solution_nu
             if new_time<old_time:
                 out_q.put((gemm, old_time, new_time))
+    del tunner
 
 
 def process_gemms(gemms, timeout):
@@ -280,6 +281,7 @@ def main():
     parser.add_argument("--show_gemms", action="store_true")
     parser.add_argument("--timeout", default=60, type=int, help="Gemm tuning timeout(seconds).")
     parser.add_argument("--show_output", action="store_true")
+    parser.add_argument("--chunk_size", default=64, type=int, help="split gemms to chunks in order to avoid multi processing stuck")
     parser.add_argument("executable", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
@@ -307,9 +309,18 @@ def main():
 
     if args.show_gemms:
         print(f"Got unique gemms {gemms}")
-
-    gemms, total_old, total_new = process_gemms(gemms, args.timeout)
     
+    final_gemms = []
+    total_old = 0
+    total_new = 0
+    for i in range(0, len(gemms), args.chunk_size):
+        sub_gemms = gemms[i : i + args.chunk_size]
+        sub_gemms, sub_old, sub_new = process_gemms(sub_gemms, args.timeout)
+        final_gemms += sub_gemms
+        total_old += sub_old
+        total_new += sub_new
+
+    gemms = final_gemms
     print(
         f"{os.linesep}{'>'*20:<20}{' Summary ':^20}{'<'*20:>20}{os.linesep}"
         f"Old time: {total_old}{os.linesep}"

@@ -74,11 +74,9 @@ public:
     // TODO: Setup dtype, device, ect.
     CHECK_HIP_ERROR(hipSetDevice(deviceId));
 
-    CHECK_HIP_ERROR(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
-
     CHECK_ROCBLAS_ERROR(rocblas_create_handle(&handle));
 
-    CHECK_ROCBLAS_ERROR(rocblas_set_stream(handle, stream));
+    CHECK_ROCBLAS_ERROR(rocblas_get_stream(handle, &stream));
 
     CHECK_HIP_ERROR(hipEventCreate(&start));
     CHECK_HIP_ERROR(hipEventCreate(&stop));
@@ -86,7 +84,6 @@ public:
   ~rocBlasFinder() {
     CHECK_HIP_ERROR(hipEventDestroy(start));
     CHECK_HIP_ERROR(hipEventDestroy(stop));
-    CHECK_HIP_ERROR(hipStreamDestroy(stream));
     CHECK_ROCBLAS_ERROR(rocblas_destroy_handle(handle));
   }
 
@@ -162,17 +159,14 @@ public:
 
     // allocate memory on device
     float *da, *db, *dc;
-    CHECK_HIP_ERROR(hipMallocAsync(&da, size_a * sizeof(a_t), stream));
-    CHECK_HIP_ERROR(hipMallocAsync(&db, size_b * sizeof(b_t), stream));
-    CHECK_HIP_ERROR(hipMallocAsync(&dc, size_c * sizeof(c_t), stream));
+    CHECK_HIP_ERROR(hipMalloc(&da, size_a * sizeof(a_t)));
+    CHECK_HIP_ERROR(hipMalloc(&db, size_b * sizeof(b_t)));
+    CHECK_HIP_ERROR(hipMalloc(&dc, size_c * sizeof(c_t)));
 
     // copy matrices from host to device
-    CHECK_HIP_ERROR(hipMemcpyAsync(da, ha.data(), sizeof(a_t) * size_a,
-                                   hipMemcpyHostToDevice, stream));
-    CHECK_HIP_ERROR(hipMemcpyAsync(db, hb.data(), sizeof(b_t) * size_b,
-                                   hipMemcpyHostToDevice, stream));
-    CHECK_HIP_ERROR(hipMemcpyAsync(dc, hc.data(), sizeof(c_t) * size_c,
-                                   hipMemcpyHostToDevice, stream));
+    CHECK_HIP_ERROR(hipMemcpy(da, ha.data(), sizeof(a_t) * size_a, hipMemcpyHostToDevice));
+    CHECK_HIP_ERROR(hipMemcpy(db, hb.data(), sizeof(b_t) * size_b, hipMemcpyHostToDevice));
+    CHECK_HIP_ERROR(hipMemcpy(dc, hc.data(), sizeof(c_t) * size_c, hipMemcpyHostToDevice));
 
 #define GEMM_EX_ARGS                                                           \
   handle, trans_a, trans_b, GEMM_size.m, GEMM_size.n, GEMM_size.k, &alpha, da, \
@@ -259,9 +253,9 @@ public:
       }
     }
 
-    CHECK_HIP_ERROR(hipFreeAsync(da, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(db, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(dc, stream));
+    CHECK_HIP_ERROR(hipFree(da));
+    CHECK_HIP_ERROR(hipFree(db));
+    CHECK_HIP_ERROR(hipFree(dc));
 
     ave_time = bestTime / hot_calls;
     printf(R"(
@@ -354,17 +348,14 @@ public:
 
     // allocate memory on device
     float *da, *db, *dc;
-    CHECK_HIP_ERROR(hipMallocAsync(&da, size_a * sizeof(a_t), stream));
-    CHECK_HIP_ERROR(hipMallocAsync(&db, size_b * sizeof(b_t), stream));
-    CHECK_HIP_ERROR(hipMallocAsync(&dc, size_c * sizeof(c_t), stream));
+    CHECK_HIP_ERROR(hipMalloc(&da, size_a * sizeof(a_t)));
+    CHECK_HIP_ERROR(hipMalloc(&db, size_b * sizeof(b_t)));
+    CHECK_HIP_ERROR(hipMalloc(&dc, size_c * sizeof(c_t)));
 
     // copy matrices from host to device
-    CHECK_HIP_ERROR(hipMemcpyAsync(da, ha.data(), sizeof(a_t) * size_a,
-                                   hipMemcpyHostToDevice, stream));
-    CHECK_HIP_ERROR(hipMemcpyAsync(db, hb.data(), sizeof(b_t) * size_b,
-                                   hipMemcpyHostToDevice, stream));
-    CHECK_HIP_ERROR(hipMemcpyAsync(dc, hc.data(), sizeof(c_t) * size_c,
-                                   hipMemcpyHostToDevice, stream));
+    CHECK_HIP_ERROR(hipMemcpy(da, ha.data(), sizeof(a_t) * size_a, hipMemcpyHostToDevice));
+    CHECK_HIP_ERROR(hipMemcpy(db, hb.data(), sizeof(b_t) * size_b, hipMemcpyHostToDevice));
+    CHECK_HIP_ERROR(hipMemcpy(dc, hc.data(), sizeof(c_t) * size_c, hipMemcpyHostToDevice));
 
 #define GEMM_ST_BATCH_EX_ARGS                                                  \
   handle, trans_a, trans_b, GEMM_size.m, GEMM_size.n, GEMM_size.k, &alpha, da, \
@@ -454,9 +445,9 @@ public:
         std::cout << "Error on solution: " << solc << std::endl;
       }
     }
-    CHECK_HIP_ERROR(hipFreeAsync(da, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(db, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(dc, stream));
+    CHECK_HIP_ERROR(hipFree(da));
+    CHECK_HIP_ERROR(hipFree(db));
+    CHECK_HIP_ERROR(hipFree(dc));
 
     ave_time = bestTime / hot_calls;
     printf(R"(

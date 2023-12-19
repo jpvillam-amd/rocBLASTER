@@ -8,7 +8,7 @@ import os
 import re
 import csv
 import mimetypes
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, set_start_method
 import signal
 # TODO: Need to figure out this relative path
 from rocBlasFinder import rocBlasFinder
@@ -253,7 +253,7 @@ def process_gemms(gemms, timeout):
         p.start()
         processes.append(p)
     for p in processes:
-        p.join(timeout=len(gemms)*timeout)
+        p.join()
         p.close()
 
     total_old = 0
@@ -268,6 +268,7 @@ def process_gemms(gemms, timeout):
 
 
 def main():
+    set_start_method('spawn')
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",

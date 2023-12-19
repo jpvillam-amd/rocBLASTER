@@ -67,6 +67,7 @@ private:
 
   rocblas_handle handle;
   hipStream_t stream;
+  hipEvent_t start, stop;
 
 public:
   rocBlasFinder(int deviceId) {
@@ -78,10 +79,15 @@ public:
     CHECK_ROCBLAS_ERROR(rocblas_create_handle(&handle));
 
     CHECK_ROCBLAS_ERROR(rocblas_set_stream(handle, stream));
+
+    CHECK_HIP_ERROR(hipEventCreate(&start));
+    CHECK_HIP_ERROR(hipEventCreate(&stop));
   }
   ~rocBlasFinder() {
-    rocblas_destroy_handle(handle);
-    hipStreamDestroy(stream);
+    CHECK_HIP_ERROR(hipEventDestroy(start));
+    CHECK_HIP_ERROR(hipEventDestroy(stop));
+    CHECK_HIP_ERROR(hipStreamDestroy(stream));
+    CHECK_ROCBLAS_ERROR(rocblas_destroy_handle(handle));
   }
 
   // TODO: Can combine the following functions in a smart way.
@@ -197,19 +203,18 @@ public:
     float time = 0;
     float ave_time = 0;
     float ave_time_default = 0;
-    hipEvent_t start, stop;
-    hipEventCreate(&start);
-    hipEventCreate(&stop);
+    
+
     // timing loop
-    hipEventRecord(start, stream);
+    CHECK_HIP_ERROR(hipEventRecord(start, stream));
     for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
       CHECK_ROCBLAS_ERROR(rocblas_gemm_exM(GEMM_EX_ARGS,
                                            rocblas_gemm_algo_standard, 0,
                                            rocblas_gemm_flags_none));
     }
-    hipEventRecord(stop, stream);
-    hipEventSynchronize(stop);
-    hipEventElapsedTime(&time, start, stop);
+    CHECK_HIP_ERROR(hipEventRecord(stop, stream));
+    CHECK_HIP_ERROR(hipEventSynchronize(stop));
+    CHECK_HIP_ERROR(hipEventElapsedTime(&time, start, stop));
     time *= 1000;
 
     ave_time_default = time / hot_calls;
@@ -230,7 +235,7 @@ public:
         }
 
         // timing loop
-        hipEventRecord(start, stream);
+        CHECK_HIP_ERROR(hipEventRecord(start, stream));
         for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
           auto ret =
               rocblas_gemm_exM(GEMM_EX_ARGS, rocblas_gemm_algo_solution_index,
@@ -239,9 +244,9 @@ public:
             throw(sol);
           }
         }
-        hipEventRecord(stop, stream);
-        hipEventSynchronize(stop);
-        hipEventElapsedTime(&time, start, stop);
+        CHECK_HIP_ERROR(hipEventRecord(stop, stream));
+        CHECK_HIP_ERROR(hipEventSynchronize(stop));
+        CHECK_HIP_ERROR(hipEventElapsedTime(&time, start, stop));
         time *= 1000;
 
         // track winner
@@ -254,9 +259,9 @@ public:
       }
     }
 
-    CHECK_HIP_ERROR(hipFreeAsync(&da, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(&db, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(&dc, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(da, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(db, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(dc, stream));
 
     ave_time = bestTime / hot_calls;
     printf(R"(
@@ -396,19 +401,16 @@ public:
     float ave_time_default = 0;
 
     // timing loop
-    hipEvent_t start, stop;
-    hipEventCreate(&start);
-    hipEventCreate(&stop);
 
-    hipEventRecord(start, stream);
+    CHECK_HIP_ERROR(hipEventRecord(start, stream));
     for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
       CHECK_ROCBLAS_ERROR(rocblas_st_batch_gemm_exM(
           GEMM_ST_BATCH_EX_ARGS, rocblas_gemm_algo_standard, 0,
           rocblas_gemm_flags_none));
     }
-    hipEventRecord(stop, stream);
-    hipEventSynchronize(stop);
-    hipEventElapsedTime(&time, start, stop);
+    CHECK_HIP_ERROR(hipEventRecord(stop, stream));
+    CHECK_HIP_ERROR(hipEventSynchronize(stop));
+    CHECK_HIP_ERROR(hipEventElapsedTime(&time, start, stop));
     time *= 1000;
 
     ave_time_default = time / hot_calls;
@@ -417,8 +419,6 @@ public:
     float bestTime = std::numeric_limits<float>::max();
     rocblas_int bestSol = -1;
     for (auto sol : ary) {
-      // std::cout << "Testing: " << sol << " Index: " <<
-      // rocblas_gemm_algo_solution_index << std::endl;
       // warmup
       try {
         for (rocblas_int cc = 0; cc < cold_calls; ++cc) {
@@ -431,7 +431,7 @@ public:
         }
 
         // timing loop
-        hipEventRecord(start, stream);
+        CHECK_HIP_ERROR(hipEventRecord(start, stream));
         for (rocblas_int hc = 0; hc < hot_calls; ++hc) {
           auto ret = rocblas_st_batch_gemm_exM(GEMM_ST_BATCH_EX_ARGS,
                                                rocblas_gemm_algo_solution_index,
@@ -440,9 +440,9 @@ public:
             throw(sol);
           }
         }
-        hipEventRecord(stop, stream);
-        hipEventSynchronize(stop);
-        hipEventElapsedTime(&time, start, stop);
+        CHECK_HIP_ERROR(hipEventRecord(stop, stream));
+        CHECK_HIP_ERROR(hipEventSynchronize(stop));
+        CHECK_HIP_ERROR(hipEventElapsedTime(&time, start, stop));
         time *= 1000;
 
         // track winner
@@ -454,10 +454,9 @@ public:
         std::cout << "Error on solution: " << solc << std::endl;
       }
     }
-
-    CHECK_HIP_ERROR(hipFreeAsync(&da, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(&db, stream));
-    CHECK_HIP_ERROR(hipFreeAsync(&dc, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(da, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(db, stream));
+    CHECK_HIP_ERROR(hipFreeAsync(dc, stream));
 
     ave_time = bestTime / hot_calls;
     printf(R"(
